@@ -133,7 +133,7 @@ jobs:
         working-directory: ./citron_source
         run: |
           git submodule sync --recursive
-          git submodule update --init --recursive --force
+          git submodule update --init --recursive --depth=1
 
       - name: Get Citron Commit Hash
         id: get_hash
@@ -253,7 +253,7 @@ jobs:
         working-directory: ./citron_source
         run: |
           git submodule sync --recursive
-          git submodule update --init --recursive --force
+          git submodule update --init --recursive --depth=1
 
       - name: Get Citron Commit Hash
         id: get_hash
