@@ -348,7 +348,6 @@ jobs:
     if: needs.check-version.outputs.should_build == 'true'
     runs-on: ${{ matrix.os }}
     timeout-minutes: 120
-    container: ghcr.io/pkgforge-dev/archlinux:latest
     env:
       CPM_SOURCE_CACHE: ${{ github.workspace }}/.cpm-cache
 
@@ -373,11 +372,10 @@ jobs:
             arch_arg: ""
 
     steps:
-      - name: Install Git
-        run: pacman -Syu --noconfirm --needed git
-
       - name: Checkout CI Scripts
         uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Clone Citron Source
         # No --recursive: build-citron-linux.sh uses CPM to fetch all library
@@ -412,11 +410,6 @@ jobs:
           key: cpm-linux-${{ runner.os }}-${{ matrix.os }}-${{ hashFiles('citron/CMakeModules/dependencies.cmake') }}
           restore-keys: |
             cpm-linux-${{ runner.os }}-${{ matrix.os }}-
-
-      - name: Install Packaging Dependencies
-        # package-citron-linux.sh (run by build-citron-linux.sh's package stage)
-        # bundles libgamemode.so into the AppImage if present on the system.
-        run: pacman -Syu --noconfirm --needed gamemode
 
       - name: Setup Build Environment
         working-directory: ./citron
