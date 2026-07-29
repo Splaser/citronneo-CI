@@ -4,13 +4,7 @@
 
 ## Star History
 
-<a href="https://www.star-history.com/#citron-neo/CI&type=date&legend=top-left">
- <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=citron-neo/CI&type=date&theme=dark&legend=top-left" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=citron-neo/CI&type=date&legend=top-left" />
-   <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=citron-neo/CI&type=date&legend=top-left" />
- </picture>
-</a>
+[![Star History Chart](https://api.star-history.com/svg?repos=citron-neo/CI&type=Date&legend=top-left)](https://star-history.com/#citron-neo/CI&Date)
 
 ---
 
@@ -38,7 +32,7 @@ Direct links for other information you may need can also be found below:
 
 # READ THIS IF YOU HAVE ISSUES
 
-If you are on wayland (specially GNOME wayland) and get freezes or crashes, you are likely affected by this issue that affects all Qt6 apps: [citron-neo#50](https://github.com/citron-neo/CI/pull/50)
+If you are on wayland (specially GNOME wayland) and get freezes or crashes, you are likely affected by an issue that affects all Qt6 apps.
 
 To fix it simply set the env variable `QT_QPA_PLATFORM=xcb`
 
