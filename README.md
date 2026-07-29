@@ -2,10 +2,6 @@
 
 [![GitHub Downloads](https://camo.githubusercontent.com/f7d99771b8c7be2c26f2ae567342d0f6224a81daf7362bad19031525d68ecbd8/68747470733a2f2f696d672e736869656c64732e696f2f6769746875622f646f776e6c6f6164732f636974726f6e2d6e656f2f43492f746f74616c3f6c6f676f3d676974687562266c6162656c3d476974487562253230446f776e6c6f616473)](https://github.com/citron-neo/CI/releases/latest) [![Build Citron Neo (Nightly)](https://github.com/citron-neo/CI/actions/workflows/build_nightly.yml/badge.svg)](https://github.com/citron-neo/CI/actions/workflows/build_nightly.yml) [![Build Citron Neo (Stable)](https://github.com/citron-neo/CI/actions/workflows/build_stable.yml/badge.svg)](https://github.com/citron-neo/CI/actions/workflows/build_stable.yml)
 
-## Star History
-
-[![Star History Chart](https://api.star-history.com/svg?repos=citron-neo/CI&type=Date&legend=top-left)](https://star-history.com/#citron-neo/CI&Date)
-
 ---
 
 This repository makes Nightly builds for **x86_64** (Standard), **x86_64_v3** (CPU's that are from 2013+) & **aarch64** on Linux, and also Windows, Android & macOS builds! These builds are all produced @ 12 AM UTC every single day.
