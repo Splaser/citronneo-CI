@@ -2,6 +2,11 @@ name: Build Citron (Android)
 
 on:
   workflow_dispatch:
+    inputs:
+      cpm_no_submodules_test:
+        description: "Build with CPM without initializing source submodules; skip release"
+        type: boolean
+        default: false
 
 jobs:
   check-version:
@@ -71,7 +76,10 @@ jobs:
       - name: Compare versions
         id: compare
         run: |
-          if [ "${{ steps.upstream.outputs.hash_short }}" != "${{ steps.last_built.outputs.last_hash }}" ]; then
+          if [ "${{ inputs.cpm_no_submodules_test }}" = "true" ]; then
+            echo "should_build=true" >> $GITHUB_OUTPUT
+            echo "CPM no-submodules test requested - will build"
+          elif [ "${{ steps.upstream.outputs.hash_short }}" != "${{ steps.last_built.outputs.last_hash }}" ]; then
             echo "should_build=true" >> $GITHUB_OUTPUT
             echo "✅ New version detected - will build"
           elif [ "${{ steps.release_check.outputs.exists }}" != "true" ]; then
@@ -110,13 +118,13 @@ jobs:
 
             if [ "${{ needs.check-version.outputs.branch_name }}" = "$FEATURE" ]; then
               echo "🌿 Cloning feature branch: ${{ needs.check-version.outputs.branch_name }}"
-              if git clone --recursive -b "$FEATURE" "$REPO_URL" citron_source; then
+              if git clone -b "$FEATURE" "$REPO_URL" citron_source; then
                 echo "✅ Clone successful."
                 exit 0
               fi
             else
               echo "📦 Cloning main branch"
-              if git clone --recursive "$REPO_URL" citron_source; then
+              if git clone "$REPO_URL" citron_source; then
                 echo "✅ Clone successful."
                 exit 0
               fi
@@ -129,11 +137,13 @@ jobs:
           echo "❌ Failed to clone after $MAX_ATTEMPTS attempts."
           exit 1
 
-      - name: Force Update Submodules
+      - name: Verify source submodules remain uninitialized
         working-directory: ./citron_source
         run: |
-          git submodule sync --recursive
-          git submodule update --init --recursive --depth=1
+          if git submodule status | grep -v '^-'; then
+            echo "::error::A source submodule was initialized before the CPM build"
+            exit 1
+          fi
 
       - name: Get Citron Commit Hash
         id: get_hash
@@ -231,13 +241,13 @@ jobs:
 
             if [ "${{ needs.check-version.outputs.branch_name }}" = "$FEATURE" ]; then
               echo "🌿 Cloning feature branch: ${{ needs.check-version.outputs.branch_name }}"
-              if git clone --recursive -b "$FEATURE" "$REPO_URL" citron_source; then
+              if git clone -b "$FEATURE" "$REPO_URL" citron_source; then
                 echo "✅ Clone successful."
                 exit 0
               fi
             else
               echo "📦 Cloning main branch"
-              if git clone --recursive "$REPO_URL" citron_source; then
+              if git clone "$REPO_URL" citron_source; then
                 echo "✅ Clone successful."
                 exit 0
               fi
@@ -250,11 +260,13 @@ jobs:
           echo "❌ Failed to clone after $MAX_ATTEMPTS attempts."
           exit 1
 
-      - name: Force Update Submodules
+      - name: Verify source submodules remain uninitialized
         working-directory: ./citron_source
         run: |
-          git submodule sync --recursive
-          git submodule update --init --recursive --depth=1
+          if git submodule status | grep -v '^-'; then
+            echo "::error::A source submodule was initialized before the CPM build"
+            exit 1
+          fi
 
       - name: Get Citron Commit Hash
         id: get_hash
@@ -360,7 +372,7 @@ jobs:
   release-android:
     name: "Release Android Nightly"
     needs: [check-version, build-android, build-android-8elite]
-    if: needs.check-version.outputs.should_build == 'true'
+    if: needs.check-version.outputs.should_build == 'true' && inputs.cpm_no_submodules_test != true
     permissions:
       contents: write
     runs-on: ubuntu-latest
