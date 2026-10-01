@@ -54,6 +54,15 @@ jobs:
       - uses: ilammy/msvc-dev-cmd@v1
         with:
           arch: x64
+      - name: Fetch history required by vcpkg version overrides
+        shell: pwsh
+        run: |
+          $shallow = git -C externals/vcpkg rev-parse --is-shallow-repository
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if ($shallow -eq 'true') {
+            git -C externals/vcpkg fetch --unshallow
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
       - name: Configure default Windows provider
         shell: pwsh
         run: |
@@ -89,6 +98,8 @@ jobs:
     steps:
       - name: Install system provider and build tools
         run: |
+          pacman-key --init
+          pacman-key --populate archlinux
           pacman -Syu --needed --noconfirm git cmake ninja gcc python pkgconf \
             boost boost-libs fmt nlohmann-json lz4 zstd zlib openssl opus ffmpeg \
             enet sdl2 alsa-lib catch2 autoconf automake libtool
