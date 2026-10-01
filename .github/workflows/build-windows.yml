@@ -96,17 +96,44 @@ jobs:
             -DCITRON_ROOM=OFF -DCITRON_TESTS=ON -DCITRON_CRASH_DUMPS=OFF
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Build CLI, shader tool and tests
+        id: build
         shell: pwsh
         run: |
           cmake --build build-provider --target citron-cmd shader_tool tests --parallel 3
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Run tests
+        id: tests
         run: ctest --test-dir build-provider --output-on-failure --timeout 180
+      - name: Diagnose failed tests individually
+        if: failure() && steps.tests.conclusion == 'failure'
+        shell: pwsh
+        run: |
+          $executable = Join-Path $PWD 'build-provider/bin/tests.exe'
+          $names = @(& $executable --list-test-names-only)
+          if ($LASTEXITCODE -ne 0) { throw 'Test enumeration failed before running a test case' }
+          $failures = @()
+          foreach ($name in $names) {
+            if ([string]::IsNullOrWhiteSpace($name)) { continue }
+            Write-Output "Running isolated test: $name"
+            $filter = $name.Replace('\', '\\').Replace(',', '\,').Replace('[', '\[').Replace(']', '\]')
+            $output = @(& $executable $filter 2>&1)
+            $code = $LASTEXITCODE
+            if ($code -ne 0) {
+              Write-Output "::error::Test failed: $name (exit $code)"
+              $output | ForEach-Object { Write-Output $_ }
+              $failures += "$name (exit $code)"
+            }
+          }
+          if ($failures.Count) { throw ($failures -join "`n") }
+          Write-Output 'Isolated tests passed; the original CTest failure remains recorded.'
       - name: Upload CLI and shader tool
+        if: always() && steps.build.conclusion == 'success'
         uses: actions/upload-artifact@v4
         with:
           name: citron-windows-msvc-vcpkg-test
           path: |
             build-provider/bin/citron-cmd.exe
             build-provider/bin/shader_tool.exe
+            build-provider/bin/tests.exe
+            build-provider/bin/*.dll
           if-no-files-found: error
