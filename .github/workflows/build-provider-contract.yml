@@ -16,7 +16,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  EMULATOR_BRANCH: codex/dynarmic-latest-android-test
+  EMULATOR_BRANCH: codex/android-oboe-cpm
 
 jobs:
   resolve-source:

@@ -11,7 +11,7 @@ gh workflow run build-android.yml --repo Splaser/citronneo-CI --ref codex/dynarm
 ```
 
 The workflow resolves `Splaser/emulator` branch
-`codex/dynarmic-latest-android-test` once, then both APK jobs check out that
+`codex/android-oboe-cpm` once, then both APK jobs check out that
 exact commit. Initially this is `fa427922b3`, based on personal main
 `53e5129737`, with Dynarmic pinned to `b1440b456b80f3dde0c01665932d114c4961ee93`.
 Source submodules remain uninitialized; dependencies use CPM.

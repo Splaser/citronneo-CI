@@ -12,7 +12,7 @@ concurrency:
 
 env:
   EMULATOR_REPOSITORY: https://github.com/Splaser/emulator.git
-  EMULATOR_BRANCH: codex/dynarmic-latest-android-test
+  EMULATOR_BRANCH: codex/android-oboe-cpm
   ANDROID_NDK_VERSION: 29.0.14206865
 
 jobs:
