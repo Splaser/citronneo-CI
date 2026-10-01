@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       source_commit:
-        description: 'Optional exact emulator commit SHA; defaults to the PR branch head'
+        description: 'Optional exact emulator commit SHA; defaults to personal main'
         type: string
         required: false
         default: ''

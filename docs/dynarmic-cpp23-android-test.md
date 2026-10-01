@@ -42,8 +42,7 @@ keys. Each resolves personal main once, or accepts an optional 40-character
   (versions recorded in the log).
 
 Both build the SDL CLI, shader tool and tests with Qt disabled. They do not prove
-Qt packaging or desktop CPM support. These existing workflow filenames can be
-dispatched on the test branch without first changing CI `main`:
+Qt packaging or desktop CPM support. Dispatch each platform independently on CI `main`:
 
 ```sh
 gh workflow run build-windows.yml --repo Splaser/citronneo-CI --ref main
