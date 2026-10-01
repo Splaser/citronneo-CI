@@ -29,4 +29,18 @@ Every manual run builds both APK variants and uploads:
 
 There is no release job, version-file update, or Discord notification in
 this test workflow. Successful APK compilation does not establish that
-the A32/SMU runtime regression is fixed; test the resulting APK on device.
+the A32/SMU runtime regression is fixed. The user has confirmed that SMU starts
+successfully with the current baseline; longer gameplay remains separate coverage.
+
+The companion `build-provider-contract.yml` workflow resolves the same test branch
+and tests desktop default providers, without release or version-file side effects:
+
+- Windows/MSVC: vcpkg plus source submodules.
+- Linux/GCC: system packages plus source submodules (versions recorded in the log).
+
+Both build the SDL CLI, shader tool and tests with Qt disabled. They do not prove
+Qt packaging or desktop CPM support. Run with:
+
+```sh
+gh workflow run build-provider-contract.yml --repo Splaser/citronneo-CI --ref codex/dynarmic-cpp23-android-test
+```

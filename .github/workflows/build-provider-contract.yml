@@ -1,0 +1,114 @@
+name: Build Citron (desktop default providers)
+
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: desktop-provider-contract-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  EMULATOR_BRANCH: codex/dynarmic-latest-android-test
+
+jobs:
+  resolve-source:
+    runs-on: ubuntu-latest
+    outputs:
+      commit: ${{ steps.source.outputs.commit }}
+    steps:
+      - name: Resolve exact test source
+        id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          commit=$(git ls-remote https://github.com/Splaser/emulator.git "refs/heads/$EMULATOR_BRANCH" | cut -f1)
+          [[ "$commit" =~ ^[0-9a-f]{40}$ ]]
+          echo "commit=$commit" >> "$GITHUB_OUTPUT"
+          echo "Testing $EMULATOR_BRANCH at $commit"
+
+  windows-vcpkg:
+    name: Windows MSVC / vcpkg + submodules
+    needs: resolve-source
+    runs-on: windows-2022
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: Splaser/emulator
+          ref: ${{ needs.resolve-source.outputs.commit }}
+          submodules: recursive
+          persist-credentials: false
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+      - name: Configure default Windows provider
+        shell: pwsh
+        run: |
+          cmake -S . -B build-provider -G Ninja `
+            -DCMAKE_BUILD_TYPE=Release `
+            -DCITRON_USE_CPM=OFF -DCITRON_USE_BUNDLED_VCPKG=ON `
+            -DENABLE_QT=OFF -DENABLE_SDL2=ON -DENABLE_CUBEB=OFF `
+            -DENABLE_WEB_SERVICE=OFF -DENABLE_LIBUSB=OFF `
+            -DCITRON_ROOM=OFF -DCITRON_TESTS=ON -DCITRON_CRASH_DUMPS=OFF
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Build CLI, shader tool and tests
+        shell: pwsh
+        run: |
+          cmake --build build-provider --target citron-cmd shader_tool tests --parallel 3
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Run tests
+        run: ctest --test-dir build-provider --output-on-failure --timeout 180
+      - name: Upload CLI and shader tool
+        uses: actions/upload-artifact@v4
+        with:
+          name: citron-windows-msvc-vcpkg-test
+          path: |
+            build-provider/bin/citron-cmd.exe
+            build-provider/bin/shader_tool.exe
+          if-no-files-found: error
+
+  linux-system:
+    name: Linux GCC / system + submodules
+    needs: resolve-source
+    runs-on: ubuntu-24.04
+    container: ghcr.io/pkgforge-dev/archlinux:latest
+    timeout-minutes: 120
+    steps:
+      - name: Install system provider and build tools
+        run: |
+          pacman -Syu --needed --noconfirm git cmake ninja gcc python pkgconf \
+            boost boost-libs fmt nlohmann-json lz4 zstd zlib openssl opus ffmpeg \
+            enet sdl2 alsa-lib catch2 autoconf automake libtool
+      - uses: actions/checkout@v4
+        with:
+          repository: Splaser/emulator
+          ref: ${{ needs.resolve-source.outputs.commit }}
+          submodules: recursive
+          persist-credentials: false
+      - name: Record system provider versions
+        run: |
+          pacman -Q boost fmt nlohmann-json lz4 zstd zlib openssl opus ffmpeg
+          g++ --version
+      - name: Configure default Linux provider
+        run: |
+          cmake -S . -B build-provider -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCITRON_USE_CPM=OFF -DCITRON_USE_BUNDLED_VCPKG=OFF \
+            -DENABLE_QT=OFF -DENABLE_SDL2=ON -DCITRON_USE_EXTERNAL_SDL2=OFF \
+            -DENABLE_CUBEB=OFF -DENABLE_WEB_SERVICE=OFF -DENABLE_LIBUSB=OFF \
+            -DCITRON_ROOM=OFF -DCITRON_TESTS=ON -DCITRON_CRASH_DUMPS=OFF
+      - name: Build CLI, shader tool and tests
+        run: cmake --build build-provider --target citron-cmd shader_tool tests --parallel 3
+      - name: Run tests
+        run: ctest --test-dir build-provider --output-on-failure --timeout 180
+      - name: Upload CLI and shader tool
+        uses: actions/upload-artifact@v4
+        with:
+          name: citron-linux-system-provider-test
+          path: |
+            build-provider/bin/citron-cmd
+            build-provider/bin/shader_tool
+          if-no-files-found: error
