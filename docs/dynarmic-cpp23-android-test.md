@@ -1,18 +1,19 @@
 # Dynarmic / C++23 Android test
 
-This CI branch starts from Splaser/citronneo-CI main at `cfc3854`.
+These workflows were developed from Splaser/citronneo-CI main at `cfc3854`
+and are now synchronized to main alongside the emulator changes.
 It does not merge upstream CI changes. macOS remains at that baseline;
-Windows and Linux have independent provider test workflows on this branch.
+Windows and Linux have independent provider test workflows on main.
 
-Run `build-android.yml` on `codex/dynarmic-cpp23-android-test`:
+Run `build-android.yml` on `main`:
 
 ```sh
-gh workflow run build-android.yml --repo Splaser/citronneo-CI --ref codex/dynarmic-cpp23-android-test
+gh workflow run build-android.yml --repo Splaser/citronneo-CI --ref main
 ```
 
 The workflow resolves `Splaser/emulator` branch
-`codex/android-oboe-cpm` once, then both APK jobs check out that
-exact commit from the upstream-based PR branch, with Dynarmic pinned to
+`main` once, then both APK jobs check out that
+exact commit from personal main, with Dynarmic pinned to
 `b1440b456b80f3dde0c01665932d114c4961ee93`.
 Source submodules remain uninitialized; dependencies use CPM.
 
@@ -33,7 +34,7 @@ the A32/SMU runtime regression is fixed. The user has confirmed that SMU starts
 successfully with the current baseline; longer gameplay remains separate coverage.
 
 Windows and Linux run independently from Android, with separate concurrency
-keys. Each resolves the PR branch head once, or accepts an optional 40-character
+keys. Each resolves personal main once, or accepts an optional 40-character
 `source_commit` input to test an exact emulator revision:
 
 - `build-windows.yml`: Windows/MSVC, vcpkg plus source submodules.
@@ -45,12 +46,12 @@ Qt packaging or desktop CPM support. These existing workflow filenames can be
 dispatched on the test branch without first changing CI `main`:
 
 ```sh
-gh workflow run build-windows.yml --repo Splaser/citronneo-CI --ref codex/dynarmic-cpp23-android-test
-gh workflow run build-linux.yml --repo Splaser/citronneo-CI --ref codex/dynarmic-cpp23-android-test
+gh workflow run build-windows.yml --repo Splaser/citronneo-CI --ref main
+gh workflow run build-linux.yml --repo Splaser/citronneo-CI --ref main
 ```
 
 For a comparison using the same source revision, add `-f source_commit=<full-SHA>`
 to each desktop command. Android resolves its source revision separately and
 prints it in the log. Starting or cancelling one platform does not affect another.
 All three test workflows only upload build artifacts; they do not publish releases,
-update version files, or send Discord notifications. CI `main` is unchanged.
+update version files, or send Discord notifications. All three workflows build Splaser/emulator `main` by default.

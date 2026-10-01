@@ -17,7 +17,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  EMULATOR_BRANCH: codex/android-oboe-cpm
+  EMULATOR_BRANCH: main
 
 jobs:
   resolve-source:

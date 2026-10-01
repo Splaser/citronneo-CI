@@ -12,7 +12,7 @@ concurrency:
 
 env:
   EMULATOR_REPOSITORY: https://github.com/Splaser/emulator.git
-  EMULATOR_BRANCH: codex/android-oboe-cpm
+  EMULATOR_BRANCH: main
   ANDROID_NDK_VERSION: 29.0.14206865
 
 jobs:
