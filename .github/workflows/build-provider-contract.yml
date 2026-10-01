@@ -2,6 +2,11 @@ name: Build Citron (desktop default providers)
 
 on:
   workflow_dispatch: {}
+  workflow_call:
+    inputs:
+      source_commit:
+        type: string
+        required: true
 
 permissions:
   contents: read
@@ -22,9 +27,14 @@ jobs:
       - name: Resolve exact test source
         id: source
         shell: bash
+        env:
+          SOURCE_COMMIT: ${{ inputs.source_commit }}
         run: |
           set -euo pipefail
-          commit=$(git ls-remote https://github.com/Splaser/emulator.git "refs/heads/$EMULATOR_BRANCH" | cut -f1)
+          commit="$SOURCE_COMMIT"
+          if [[ -z "$commit" ]]; then
+            commit=$(git ls-remote https://github.com/Splaser/emulator.git "refs/heads/$EMULATOR_BRANCH" | cut -f1)
+          fi
           [[ "$commit" =~ ^[0-9a-f]{40}$ ]]
           echo "commit=$commit" >> "$GITHUB_OUTPUT"
           echo "Testing $EMULATOR_BRANCH at $commit"

@@ -16,6 +16,13 @@ env:
   ANDROID_NDK_VERSION: 29.0.14206865
 
 jobs:
+  desktop-providers:
+    name: Desktop default providers
+    needs: check-version
+    uses: ./.github/workflows/build-provider-contract.yml
+    with:
+      source_commit: ${{ needs.check-version.outputs.new_hash_full }}
+
   check-version:
     name: Resolve Dynarmic test source
     runs-on: ubuntu-latest
