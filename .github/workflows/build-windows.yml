@@ -109,7 +109,7 @@ jobs:
         shell: pwsh
         run: |
           $executable = Join-Path $PWD 'build-provider/bin/tests.exe'
-          $names = @(& $executable --list-test-names-only)
+          $names = @(& $executable --list-tests --verbosity quiet)
           if ($LASTEXITCODE -ne 0) { throw 'Test enumeration failed before running a test case' }
           $failures = @()
           foreach ($name in $names) {
