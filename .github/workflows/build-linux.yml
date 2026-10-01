@@ -1,257 +1,86 @@
-name: Build Citron (Linux)
-
-concurrency:
-  group: build-nightly-${{ github.ref }}
-  cancel-in-progress: true
+name: Build Citron (Linux default provider test)
 
 on:
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      source_commit:
+        description: 'Optional exact emulator commit SHA; defaults to the PR branch head'
+        type: string
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+
+concurrency:
+  group: linux-provider-contract-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  EMULATOR_BRANCH: codex/android-oboe-cpm
 
 jobs:
-  check-version:
-    name: Check if new version available
+  resolve-source:
     runs-on: ubuntu-latest
     outputs:
-      should_build: ${{ steps.compare.outputs.should_build }}
-      new_hash: ${{ steps.upstream.outputs.hash_short }}
-      new_hash_full: ${{ steps.upstream.outputs.hash_full }}
+      commit: ${{ steps.source.outputs.commit }}
     steps:
-      - name: Checkout this repo
-        uses: actions/checkout@v4
-
-      - name: Get upstream commit hash
-        id: upstream
-        run: |
-          REPO_URL="https://github.com/citron-neo/emulator.git"
-          FULL_HASH=$(git ls-remote "$REPO_URL" HEAD | cut -f1)
-          SHORT_HASH=$(echo "$FULL_HASH" | cut -c1-7)
-          echo "hash_short=$SHORT_HASH" >> $GITHUB_OUTPUT
-          echo "hash_full=$FULL_HASH" >> $GITHUB_OUTPUT
-          echo "Upstream hash short: $SHORT_HASH"
-          echo "Upstream hash full:  $FULL_HASH"
-
-      - name: Get last built version
-        id: last_built
-        run: |
-          LAST_HASH=$(cat LATEST_VERSION | tr -d '\n' || echo "none")
-          echo "last_hash=$LAST_HASH" >> $GITHUB_OUTPUT
-          echo "Last built hash: $LAST_HASH"
-
-      - name: Check if release exists
-        id: release_check
-        run: |
-          if gh release view nightly-linux --repo "${{ github.repository }}" > /dev/null 2>&1; then
-            echo "exists=true" >> $GITHUB_OUTPUT
-            echo "Release exists"
-          else
-            echo "exists=false" >> $GITHUB_OUTPUT
-            echo "Release does not exist"
-          fi
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        continue-on-error: true
-
-      - name: Compare versions
-        id: compare
-        run: |
-          if [ "${{ steps.upstream.outputs.hash_short }}" != "${{ steps.last_built.outputs.last_hash }}" ]; then
-            echo "should_build=true" >> $GITHUB_OUTPUT
-            echo "✅ New version detected - will build"
-          elif [ "${{ steps.release_check.outputs.exists }}" != "true" ]; then
-            echo "should_build=true" >> $GITHUB_OUTPUT
-            echo "✅ No release exists - will build"
-          else
-            echo "should_build=false" >> $GITHUB_OUTPUT
-            echo "⏭️ No changes - skipping build"
-          fi
-
-  build:
-    name: "${{ matrix.name }}"
-    needs: [check-version]
-    if: needs.check-version.outputs.should_build == 'true'
-    runs-on: ${{ matrix.os }}
-    container: ${{ matrix.container }}
-    timeout-minutes: 120
-    env:
-      CPM_SOURCE_CACHE: ${{ github.workspace }}/.cpm-cache
-
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - name: "Citron Build (Normal x86_64)"
-            os: ubuntu-latest
-            container: ghcr.io/pkgforge-dev/archlinux:latest
-            artifact_suffix: "_x86_64"
-            script_suffix: ""
-            arch_arg: ""
-          - name: "Citron Build (Optimized x86_64)"
-            os: ubuntu-latest
-            container: ghcr.io/pkgforge-dev/archlinux:latest
-            artifact_suffix: "_v3"
-            script_suffix: "_v3"
-            arch_arg: "--arch v3"
-          - name: "Citron Build (aarch64)"
-            os: ubuntu-24.04-arm
-            container: ghcr.io/pkgforge-dev/archlinux:latest
-            artifact_suffix: "_aarch64"
-            script_suffix: ""
-            arch_arg: ""
-
-    steps:
-      - name: Checkout CI Scripts
-        uses: actions/checkout@v4
-        with:
-          persist-credentials: false
-
-      - name: Install Base Container Tools
-        run: pacman -Sy --needed --noconfirm git
-
-      - name: Clone Citron Source
-        # No --recursive: build-citron-linux.sh uses CPM to fetch all library
-        # dependencies at cmake configure time. No submodule init is required.
+      - name: Resolve exact test source
+        id: source
         shell: bash
-        run: |
-          REPO_URL="https://github.com/citron-neo/emulator.git"
-          ATTEMPT=0
-          MAX_ATTEMPTS=999
-          while [ $ATTEMPT -lt $MAX_ATTEMPTS ]; do
-            ATTEMPT=$((ATTEMPT + 1))
-            echo "Attempt $ATTEMPT of $MAX_ATTEMPTS: Cloning..."
-            rm -rf citron
-            if git clone "$REPO_URL" citron; then
-              echo "✅ Clone successful on attempt $ATTEMPT."
-              exit 0
-            fi
-            echo "⚠️ Clone failed. Retrying in 15 seconds..."
-            sleep 15
-          done
-          echo "❌ Failed to clone after $MAX_ATTEMPTS attempts."
-          exit 1
-
-      - name: Set Git Safe Directory
-        working-directory: ./citron
-        run: git config --global --add safe.directory "$PWD"
-
-      - name: Cache CPM Sources
-        uses: actions/cache@v4
-        with:
-          path: ${{ github.workspace }}/.cpm-cache
-          key: cpm-linux-${{ runner.os }}-${{ matrix.os }}-${{ hashFiles('citron/CMakeModules/dependencies.cmake') }}
-          restore-keys: |
-            cpm-linux-${{ runner.os }}-${{ matrix.os }}-
-
-      - name: Setup Build Environment
-        working-directory: ./citron
-        run: |
-          chmod +x ./build-citron-linux.sh
-          ./build-citron-linux.sh setup
-
-      - name: Get Version
-        id: version
-        working-directory: ./citron
-        run: echo "sha=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
-
-      - name: Build Citron
-        working-directory: ./citron
         env:
-          CITRON_BUILD_TYPE: Release
-          APP_VERSION: ${{ steps.version.outputs.sha }}
-          ARCH_SUFFIX: ${{ matrix.script_suffix }}
+          SOURCE_COMMIT: ${{ inputs.source_commit }}
         run: |
-          NPROC_VAL=$(nproc --all)
-          JOBS_VAL=$((NPROC_VAL > 4 ? 4 : NPROC_VAL))
-          JOBS=${JOBS_VAL} ./build-citron-linux.sh use --pgo none --lto full ${{ matrix.arch_arg }}
+          set -euo pipefail
+          commit="$SOURCE_COMMIT"
+          if [[ -z "$commit" ]]; then
+            commit=$(git ls-remote https://github.com/Splaser/emulator.git "refs/heads/$EMULATOR_BRANCH" | cut -f1)
+          fi
+          [[ "$commit" =~ ^[0-9a-f]{40}$ ]]
+          echo "commit=$commit" >> "$GITHUB_OUTPUT"
+          echo "Testing $EMULATOR_BRANCH at $commit"
 
-      - name: Upload Artifacts
+  linux-system:
+    name: Linux GCC / system + submodules
+    needs: resolve-source
+    runs-on: ubuntu-24.04
+    container: ghcr.io/pkgforge-dev/archlinux:latest
+    timeout-minutes: 120
+    steps:
+      - name: Install system provider and build tools
+        run: |
+          pacman-key --init
+          pacman-key --populate archlinux
+          pacman -Syu --needed --noconfirm git cmake ninja gcc python pkgconf \
+            boost boost-libs fmt nlohmann-json lz4 zstd zlib openssl opus ffmpeg \
+            enet sdl2 alsa-lib catch2 autoconf automake libtool
+      - uses: actions/checkout@v4
+        with:
+          repository: Splaser/emulator
+          ref: ${{ needs.resolve-source.outputs.commit }}
+          submodules: recursive
+          persist-credentials: false
+      - name: Record system provider versions
+        run: |
+          pacman -Q boost fmt nlohmann-json lz4 zstd zlib openssl opus ffmpeg
+          g++ --version
+      - name: Configure default Linux provider
+        run: |
+          cmake -S . -B build-provider -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCITRON_USE_CPM=OFF -DCITRON_USE_BUNDLED_VCPKG=OFF \
+            -DENABLE_QT=OFF -DENABLE_SDL2=ON -DCITRON_USE_EXTERNAL_SDL2=OFF \
+            -DENABLE_CUBEB=OFF -DENABLE_WEB_SERVICE=OFF -DENABLE_LIBUSB=OFF \
+            -DCITRON_ROOM=OFF -DCITRON_TESTS=ON -DCITRON_CRASH_DUMPS=OFF
+      - name: Build CLI, shader tool and tests
+        run: cmake --build build-provider --target citron-cmd shader_tool tests --parallel 3
+      - name: Run tests
+        run: ctest --test-dir build-provider --output-on-failure --timeout 180
+      - name: Upload CLI and shader tool
         uses: actions/upload-artifact@v4
         with:
-          name: Artifacts${{ matrix.artifact_suffix }}
-          path: citron/build/use-nopgo/AppImage/
-
-
-  release:
-    if: ${{ github.ref_name == 'main' }}
-    name: "release"
-    needs: [check-version, build]
-    permissions:
-      actions: read
-      security-events: write
-      contents: write
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout this repository
-        uses: actions/checkout@v4
-
-      - name: Checkout Upstream Repository
-        run: git clone https://github.com/citron-neo/emulator.git upstream_repo
-
-      - name: Set Version
-        id: version
-        working-directory: ./upstream_repo
-        run: echo "sha=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
-
-      - name: Download all artifacts
-        uses: actions/download-artifact@v4
-        with:
-          pattern: Artifacts*
-          merge-multiple: true
-          path: .
-
-      - name: Del Previous Release
-        run: gh release delete "nightly-linux" --repo "${GITHUB_REPOSITORY}" --cleanup-tag -y && sleep 5
-        env:
-          GH_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
-        continue-on-error: true
-
-      - name: Set Build Date
-        run: echo "BUILD_DATE=$(date +'%Y-%m-%d')" >> $GITHUB_ENV
-
-      - uses: softprops/action-gh-release@v2
-        with:
-          name: "Continuous Build (Linux Nightly: ${{ steps.version.outputs.sha }})"
-          tag_name: "nightly-linux"
-          prerelease: false
-          draft: false
-          generate_release_notes: false
-          make_latest: false
-          files: |
-            *.AppImage*
-            *.tar.zst
-          body: |
-            **Citron Upstream Commit:** [`${{ needs.check-version.outputs.new_hash }}`](https://github.com/citron-neo/emulator/commit/${{ needs.check-version.outputs.new_hash_full }})
-
-            This build is based on the latest Citron emulator source code from the upstream repository.
-
-            **Build Details:**
-            - Platform: Linux (x86_64, x86_64_v3, aarch64)
-            - Format: AppImage + tar.zst packages
-            - Build Type: Release with LTO
-            - Date: ${{ env.BUILD_DATE }}
-
-      - name: Update LATEST_VERSION
-        if: success()
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          echo "${{ steps.version.outputs.sha }}" > LATEST_VERSION
-          git add LATEST_VERSION
-          git commit -m "Update LATEST_VERSION to ${{ steps.version.outputs.sha }} [skip ci]" || exit 0
-          for i in {1..5}; do
-            git pull --rebase origin main && git push && break || sleep 2
-          done
-
-      - name: Post to Discord
-        if: success()
-        run: |
-          DOWNLOAD_URL="https://github.com/${{ github.repository }}/releases/tag/nightly-linux"
-          DATE=$(date +'%Y-%m-%d')
-          WEBHOOK_URL="${{ secrets.DISCORD_WEBHOOK }}"
-          if [ -z "$WEBHOOK_URL" ]; then
-            echo "DISCORD_WEBHOOK is not set; skipping Discord notification."
-            exit 0
-          fi
-          curl -H "Content-Type: application/json" \
-               -d "{\"content\":\"🐧 **New Linux Build Available!**\n\n📦 **Version:** \`${{ steps.version.outputs.sha }}\`\n📅 **Date:** ${DATE}\n🔗 **Download:** $DOWNLOAD_URL\n\n✨ Includes x86_64, x86_64_v3 & aarch64 builds!\"}" \
-               "$WEBHOOK_URL"
+          name: citron-linux-system-provider-test
+          path: |
+            build-provider/bin/citron-cmd
+            build-provider/bin/shader_tool
+          if-no-files-found: error

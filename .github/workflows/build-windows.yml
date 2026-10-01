@@ -1,276 +1,91 @@
-name: Build Citron (Windows)
-
-concurrency:
-  group: build-windows-nightly-${{ github.ref }}
-  cancel-in-progress: true
+name: Build Citron (Windows default provider test)
 
 on:
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      source_commit:
+        description: 'Optional exact emulator commit SHA; defaults to the PR branch head'
+        type: string
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-provider-contract-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  EMULATOR_BRANCH: codex/android-oboe-cpm
 
 jobs:
-  check-version:
-    name: Check if new version available
+  resolve-source:
     runs-on: ubuntu-latest
     outputs:
-      should_build: ${{ steps.compare.outputs.should_build }}
-      new_hash: ${{ steps.upstream.outputs.hash_short }}
-      new_hash_full: ${{ steps.upstream.outputs.hash_full }}
+      commit: ${{ steps.source.outputs.commit }}
     steps:
-      - name: Checkout this repo
-        uses: actions/checkout@v4
-      - name: Get upstream commit hash
-        id: upstream
-        run: |
-          REPO_URL="https://github.com/splaser/emulator.git"
-          FULL_HASH=$(git ls-remote "$REPO_URL" HEAD | cut -f1)
-          SHORT_HASH=$(echo "$FULL_HASH" | cut -c1-7)
-          echo "hash_short=$SHORT_HASH" >> $GITHUB_OUTPUT
-          echo "hash_full=$FULL_HASH" >> $GITHUB_OUTPUT
-      - name: Get last built version
-        id: last_built
-        run: |
-          LAST_HASH=$(cat LATEST_VERSION | tr -d '\n' || echo "none")
-          echo "last_hash=$LAST_HASH" >> $GITHUB_OUTPUT
-      - name: Check if release exists
-        id: release_check
-        run: |
-          if gh release view nightly-windows --repo "${{ github.repository }}" > /dev/null 2>&1; then
-            echo "exists=true" >> $GITHUB_OUTPUT
-          else
-            echo "exists=false" >> $GITHUB_OUTPUT
-          fi
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        continue-on-error: true
-      - name: Compare versions
-        id: compare
-        run: |
-          if [ "${{ steps.upstream.outputs.hash_short }}" != "${{ steps.last_built.outputs.last_hash }}" ]; then
-            echo "should_build=true" >> $GITHUB_OUTPUT
-          elif [ "${{ steps.release_check.outputs.exists }}" != "true" ]; then
-            echo "should_build=true" >> $GITHUB_OUTPUT
-          else
-            echo "should_build=false" >> $GITHUB_OUTPUT
-          fi
-
-
-
-  build-clangtron:
-    name: "Citron Build (Windows Clangtron - x64)"
-    needs: [check-version]
-    if: needs.check-version.outputs.should_build == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 240
-    env:
-      CPM_SOURCE_CACHE: /home/runner/.cache/cpm
-
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          persist-credentials: false
-
-      - name: Clone Citron Source (Clangtron)
-        run: |
-          ATTEMPT=0
-          MAX_ATTEMPTS=999
-          while true; do
-            ATTEMPT=$((ATTEMPT + 1))
-            echo "Attempt $ATTEMPT of $MAX_ATTEMPTS: Cloning Citron..."
-
-            rm -rf citron
-
-            if git clone "https://github.com/splaser/emulator.git" citron; then
-              echo "Clone successful on attempt $ATTEMPT."
-              break
-            fi
-
-            if [ $ATTEMPT -ge $MAX_ATTEMPTS ]; then
-              echo "Failed after $MAX_ATTEMPTS attempts."
-              exit 1
-            fi
-
-            echo "Clone failed. Retrying in 15 seconds..."
-            sleep 15
-          done
-
-      - name: Init required submodules
-        working-directory: ./citron
-        run: |
-          echo "CPM manages all dependencies — no submodules needed for Clangtron"
-
-      - name: Cache CPM and Toolchain (Clangtron)
-        uses: actions/cache@v4
-        with:
-          path: /home/runner/.cache/cpm
-          key: clangtron-cache-${{ runner.os }}-${{ hashFiles('citron/CMakeModules/dependencies.cmake', 'citron/build-clangtron-windows.sh') }}
-          restore-keys: |
-            clangtron-cache-${{ runner.os }}-
-
-
-      - name: Get Version (Clangtron)
-        id: version
-        working-directory: ./citron
-        run: |
-          git fetch --tags
-          VERSION=$(git rev-parse --short HEAD)
-          echo "VERSION=${VERSION}" >> $GITHUB_OUTPUT
-
-      - name: Setup Clangtron Build Environment
-        working-directory: ./citron
-        run: |
-          chmod +x build-clangtron-windows.sh
-          ./build-clangtron-windows.sh setup
-          echo "${HOME}/.cache/cpm/llvm-mingw/bin" >> "$GITHUB_PATH"
-
-      - name: Build Citron (Clangtron LTO)
-        working-directory: ./citron
-        run: |
-          export CITRON_BUILD_TYPE=Release
-          ./build-clangtron-windows.sh use --pgo none --lto full
-
-      - name: Package Windows Build (Clangtron)
-        run: |
-          mkdir -p dist
-          BIN_DIR="./citron/build/use-nopgo/bin"
-          if [ ! -d "$BIN_DIR" ]; then
-            echo "::error::Build output not found at $BIN_DIR"
-            exit 1
-          fi
-          cd "$BIN_DIR"
-          zip -r "${GITHUB_WORKSPACE}/dist/Citron-windows-nightly-${{ steps.version.outputs.VERSION }}-x64-clangtron.zip" .
-
-      - name: Upload Windows Build (Clangtron)
-        uses: actions/upload-artifact@v4
-        with:
-          name: Citron-Windows-Nightly-Clangtron-x64
-          path: "dist/*.zip"
-
-  build-clang-cl:
-    name: "Citron Build (Windows clang-cl - x64)"
-    needs: [check-version]
-    if: needs.check-version.outputs.should_build == 'true'
-    runs-on: windows-2022
-    timeout-minutes: 240
-    permissions:
-      contents: read
-    env:
-      CPM_SOURCE_CACHE: C:/cpmcache
-      SCCACHE_DIR: C:/sccache
-      SCCACHE_CACHE_SIZE: 5G
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          persist-credentials: false
-      - name: Clone Citron Source
-        shell: pwsh
-        run: git clone https://github.com/splaser/emulator.git citron
-      - uses: msys2/setup-msys2@v2
-        with:
-          msystem: CLANG64
-          update: true
-      - uses: actions/cache@v4
-        with:
-          path: |
-            C:/cpmcache
-            C:/sccache
-          key: clang-cl-cache-${{ runner.os }}-${{ hashFiles('citron/CMakeModules/dependencies.cmake', 'citron/build-clangtron-windows.sh') }}
-          restore-keys: clang-cl-cache-${{ runner.os }}-
-      - name: Setup clang-cl
-        shell: msys2 {0}
-        working-directory: ./citron
-        run: ./build-clangtron-windows.sh setup --compiler clang-cl
-      - name: Build clang-cl
-        shell: msys2 {0}
-        working-directory: ./citron
-        run: ./build-clangtron-windows.sh use --compiler clang-cl --pgo none --lto full
-      - name: Package Windows Build
-        shell: pwsh
-        run: |
-          New-Item -ItemType Directory -Force dist | Out-Null
-          $version = (git -C citron rev-parse --short HEAD).Trim()
-          # Compress-Archive silently drops directories that contain zero files, which would
-          # strip the empty portable-mode "user" folder citron.exe expects next to its exe.
-          # A placeholder file keeps the directory non-empty so it survives archiving.
-          "This folder marks a portable installation. Citron stores config and save data here." |
-            Set-Content -Path citron/build/clang-cl/use/user/README.txt
-          Compress-Archive -Path citron/build/clang-cl/use/* `
-            -DestinationPath "dist/Citron-windows-nightly-$version-x64-clang-cl.zip"
-      - name: Upload Windows Build
-        uses: actions/upload-artifact@v4
-        with:
-          name: Citron-Windows-Nightly-ClangCL-x64
-          path: "dist/*-x64-clang-cl.zip"
-
-  release:
-    if: ${{ github.ref_name == 'main' }}
-    name: "Release"
-    needs: [check-version, build-clangtron, build-clang-cl]
-    permissions:
-      contents: write
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-      - name: Download Windows artifacts
-        uses: actions/download-artifact@v4
-        with:
-          pattern: Citron-Windows-Nightly-*
-          merge-multiple: true
-          path: ./release-artifacts
-      - name: Get Version from Filename
+      - name: Resolve exact test source
+        id: source
         shell: bash
-        run: |
-          FILENAME=$(basename "$(ls ./release-artifacts/Citron-windows-nightly-*-x64-clangtron.zip)")
-          VERSION=${FILENAME#Citron-windows-nightly-}
-          VERSION=${VERSION%-x64-clangtron.zip}
-          echo "APP_VERSION=${VERSION}" >> $GITHUB_ENV
-      - name: Delete Previous Release
-        run: gh release delete "nightly-windows" --repo "${{ github.repository }}" --cleanup-tag -y || true
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      - name: Set Build Date
-        run: echo "BUILD_DATE=$(date +'%Y-%m-%d')" >> $GITHUB_ENV
-      - name: Release Artifacts
-        uses: softprops/action-gh-release@v2
-        with:
-          name: "Continuous Build (Windows Nightly: ${{ env.APP_VERSION }})"
-          tag_name: "nightly-windows"
-          prerelease: false
-          files: |
-            release-artifacts/*-x64-clangtron.zip
-            release-artifacts/*-x64-clang-cl.zip
-          body: |
-            **Citron Upstream Commit:** [`${{ needs.check-version.outputs.new_hash }}`](https://github.com/splaser/emulator/commit/${{ needs.check-version.outputs.new_hash_full }})
-
-            This build is based on the latest Citron emulator source code from the upstream repository.
-
-            **Build Details:**
-            - Platform: Windows (x64)
-            - Toolchains: Clangtron (cross-compiled) and native clang-cl/MSVC ABI
-            - Build Type: Release
-            - Date: ${{ env.BUILD_DATE }}
-      - name: Update LATEST_VERSION
-        if: success()
+          SOURCE_COMMIT: ${{ inputs.source_commit }}
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          echo "${{ env.APP_VERSION }}" > LATEST_VERSION
-          git add LATEST_VERSION
-          git commit -m "Update LATEST_VERSION to ${{ env.APP_VERSION }} [skip ci]" || exit 0
-          for i in {1..5}; do
-            git pull --rebase origin main && git push && break || sleep 2
-          done
-
-      - name: Post to Discord
-        if: success()
-        run: |
-          DOWNLOAD_URL="https://github.com/${{ github.repository }}/releases/tag/nightly-windows"
-          DATE=$(date +'%Y-%m-%d')
-          WEBHOOK_URL="${{ secrets.DISCORD_WEBHOOK }}"
-          if [ -z "$WEBHOOK_URL" ]; then
-            echo "DISCORD_WEBHOOK is not set; skipping Discord notification."
-            exit 0
+          set -euo pipefail
+          commit="$SOURCE_COMMIT"
+          if [[ -z "$commit" ]]; then
+            commit=$(git ls-remote https://github.com/Splaser/emulator.git "refs/heads/$EMULATOR_BRANCH" | cut -f1)
           fi
-          curl -H "Content-Type: application/json" \
-               -d "{\"content\":\"🪟 **New Windows Build Available!**\n\n📦 **Version:** \`${{ env.APP_VERSION }}\`\n📅 **Date:** ${DATE}\n🔧 **Toolchains:** Clangtron (Clang LTO) & clang-cl (Clang LTO)\n🔗 **Download:** $DOWNLOAD_URL\"}" \
-               "$WEBHOOK_URL"
+          [[ "$commit" =~ ^[0-9a-f]{40}$ ]]
+          echo "commit=$commit" >> "$GITHUB_OUTPUT"
+          echo "Testing $EMULATOR_BRANCH at $commit"
+
+  windows-vcpkg:
+    name: Windows MSVC / vcpkg + submodules
+    needs: resolve-source
+    runs-on: windows-2022
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: Splaser/emulator
+          ref: ${{ needs.resolve-source.outputs.commit }}
+          submodules: recursive
+          persist-credentials: false
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+      - name: Fetch history required by vcpkg version overrides
+        shell: pwsh
+        run: |
+          $shallow = git -C externals/vcpkg rev-parse --is-shallow-repository
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if ($shallow -eq 'true') {
+            git -C externals/vcpkg fetch --unshallow
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+      - name: Configure default Windows provider
+        shell: pwsh
+        run: |
+          cmake -S . -B build-provider -G Ninja `
+            -DCMAKE_BUILD_TYPE=Release `
+            -DCITRON_USE_CPM=OFF -DCITRON_USE_BUNDLED_VCPKG=ON `
+            -DENABLE_QT=OFF -DENABLE_SDL2=ON -DENABLE_CUBEB=OFF `
+            -DENABLE_WEB_SERVICE=OFF -DENABLE_LIBUSB=OFF `
+            -DCITRON_ROOM=OFF -DCITRON_TESTS=ON -DCITRON_CRASH_DUMPS=OFF
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Build CLI, shader tool and tests
+        shell: pwsh
+        run: |
+          cmake --build build-provider --target citron-cmd shader_tool tests --parallel 3
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Run tests
+        run: ctest --test-dir build-provider --output-on-failure --timeout 180
+      - name: Upload CLI and shader tool
+        uses: actions/upload-artifact@v4
+        with:
+          name: citron-windows-msvc-vcpkg-test
+          path: |
+            build-provider/bin/citron-cmd.exe
+            build-provider/bin/shader_tool.exe
+          if-no-files-found: error

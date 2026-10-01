@@ -1,8 +1,8 @@
 # Dynarmic / C++23 Android test
 
 This CI branch starts from Splaser/citronneo-CI main at `cfc3854`.
-It does not merge upstream CI changes. macOS, Linux and Windows workflows
-remain at that baseline.
+It does not merge upstream CI changes. macOS remains at that baseline;
+Windows and Linux have independent provider test workflows on this branch.
 
 Run `build-android.yml` on `codex/dynarmic-cpp23-android-test`:
 
@@ -12,8 +12,8 @@ gh workflow run build-android.yml --repo Splaser/citronneo-CI --ref codex/dynarm
 
 The workflow resolves `Splaser/emulator` branch
 `codex/android-oboe-cpm` once, then both APK jobs check out that
-exact commit. Initially this is `fa427922b3`, based on personal main
-`53e5129737`, with Dynarmic pinned to `b1440b456b80f3dde0c01665932d114c4961ee93`.
+exact commit from the upstream-based PR branch, with Dynarmic pinned to
+`b1440b456b80f3dde0c01665932d114c4961ee93`.
 Source submodules remain uninitialized; dependencies use CPM.
 
 Both jobs install [NDK r29](https://github.com/android/ndk/releases/tag/r29)
@@ -32,17 +32,25 @@ this test workflow. Successful APK compilation does not establish that
 the A32/SMU runtime regression is fixed. The user has confirmed that SMU starts
 successfully with the current baseline; longer gameplay remains separate coverage.
 
-The companion reusable `build-provider-contract.yml` workflow receives the same
-resolved source commit from the Android workflow and tests desktop default
-providers, without release or version-file side effects:
+Windows and Linux run independently from Android, with separate concurrency
+keys. Each resolves the PR branch head once, or accepts an optional 40-character
+`source_commit` input to test an exact emulator revision:
 
-- Windows/MSVC: vcpkg plus source submodules.
-- Linux/GCC: system packages plus source submodules (versions recorded in the log).
+- `build-windows.yml`: Windows/MSVC, vcpkg plus source submodules.
+- `build-linux.yml`: Linux/GCC, system packages plus source submodules
+  (versions recorded in the log).
 
 Both build the SDL CLI, shader tool and tests with Qt disabled. They do not prove
-Qt packaging or desktop CPM support. The existing Android dispatch runs all three
-provider routes, so the new file does not need to be registered on CI `main`:
+Qt packaging or desktop CPM support. These existing workflow filenames can be
+dispatched on the test branch without first changing CI `main`:
 
 ```sh
-gh workflow run build-android.yml --repo Splaser/citronneo-CI --ref codex/dynarmic-cpp23-android-test
+gh workflow run build-windows.yml --repo Splaser/citronneo-CI --ref codex/dynarmic-cpp23-android-test
+gh workflow run build-linux.yml --repo Splaser/citronneo-CI --ref codex/dynarmic-cpp23-android-test
 ```
+
+For a comparison using the same source revision, add `-f source_commit=<full-SHA>`
+to each desktop command. Android resolves its source revision separately and
+prints it in the log. Starting or cancelling one platform does not affect another.
+All three test workflows only upload build artifacts; they do not publish releases,
+update version files, or send Discord notifications. CI `main` is unchanged.
