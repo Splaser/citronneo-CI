@@ -64,6 +64,27 @@ jobs:
             git -C externals/vcpkg fetch --unshallow
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           }
+      - name: Install pinned host shader compiler
+        shell: pwsh
+        run: |
+          $version = '16.6.0'
+          $archive = Join-Path $env:RUNNER_TEMP 'glslang.zip'
+          $tools = Join-Path $env:RUNNER_TEMP "glslang-$version"
+          Invoke-WebRequest -Uri "https://github.com/KhronosGroup/glslang/releases/download/$version/glslang-$version-windows-x86_64-release.zip" -OutFile $archive
+          $expectedHash = '82bf434e69b9bb4829de7e2b4bc2c5e7a7861e53d66cf75e5cc70f5f694a8d9b'
+          if ((Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash -ne $expectedHash) {
+            throw 'glslang archive checksum mismatch'
+          }
+          Expand-Archive -LiteralPath $archive -DestinationPath $tools
+          $bin = Join-Path $tools 'bin'
+          $compiler = Join-Path $bin 'glslang.exe'
+          if (-not (Test-Path -LiteralPath $compiler)) { throw 'glslang executable missing' }
+          # Current glslang releases renamed the CLI; Citron searches its historical name.
+          $validator = Join-Path $bin 'glslangValidator.exe'
+          Copy-Item -LiteralPath $compiler -Destination $validator
+          & $validator --version
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $bin | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
       - name: Configure default Windows provider
         shell: pwsh
         run: |
