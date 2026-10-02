@@ -1,4 +1,6 @@
-name: Build Citron (Windows default provider test)
+# Fallback/provider compatibility test only, not the supported production
+# Windows build path (clang-cl/Clangtron).
+name: Citron Windows fallback/provider compatibility test only
 
 on:
   workflow_dispatch:
@@ -41,7 +43,7 @@ jobs:
           echo "Testing $EMULATOR_BRANCH at $commit"
 
   windows-vcpkg:
-    name: Windows MSVC / vcpkg + submodules
+    name: Fallback compatibility only - MSVC / vcpkg + submodules
     needs: resolve-source
     runs-on: windows-2022
     timeout-minutes: 120
