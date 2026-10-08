@@ -376,19 +376,21 @@ jobs:
         uses: actions/download-artifact@v8
         with:
           pattern: citron-android-*
-          merge-multiple: true
+          merge-multiple: false
           path: artifacts
 
       - name: Validate both APK variants
         shell: bash
         run: |
-          test -s artifacts/app-mainline-release.apk
-          mapfile -t ELITE_APKS < <(find artifacts -maxdepth 1 -type f -name 'Citron-*-Android-8.Elite-Lyb.apk')
-          test "${#ELITE_APKS[@]}" -eq 1
-          test -s "${ELITE_APKS[0]}"
-          test "$(find artifacts -maxdepth 1 -type f -name '*.apk' | wc -l)" -eq 2
-          unzip -t artifacts/app-mainline-release.apk
-          unzip -t "${ELITE_APKS[0]}"
+          for variant in citron-android-nightly citron-android-8elite; do
+            mapfile -d '' -t APKS < <(find "artifacts/$variant" -maxdepth 1 -type f -name '*.apk' -print0)
+            if [ "${#APKS[@]}" -ne 1 ]; then
+              echo "::error::Expected exactly one APK in $variant, found ${#APKS[@]}"
+              exit 1
+            fi
+            test -s "${APKS[0]}"
+            unzip -t "${APKS[0]}"
+          done
 
       - name: Remove previous nightly release after both APKs are validated
         env:
@@ -407,7 +409,7 @@ jobs:
           prerelease: false
           make_latest: false
           fail_on_unmatched_files: true
-          files: artifacts/*.apk
+          files: artifacts/*/*.apk
           body: |
             **Emulator commit:** [${{ needs.check-version.outputs.new_hash }}](https://github.com/Splaser/emulator/commit/${{ needs.check-version.outputs.new_hash_full }})
 
