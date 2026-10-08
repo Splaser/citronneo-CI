@@ -1,4 +1,4 @@
-# Dynarmic / C++23 Android test
+# CPM / C++23 Android nightly
 
 These workflows were developed from Splaser/citronneo-CI main at `cfc3854`
 and are now synchronized to main alongside the emulator changes.
@@ -23,34 +23,29 @@ An ARM64/API 30 compile-and-link probe checks `std::format` and `std::print`
 before starting Gradle. Emulator sources retain C++23 and native standard
 formatting. ccache keys include the NDK version.
 
-Every manual run builds both APK variants and uploads:
+## Android nightly publishing
 
-- `citron-android-dynarmic-cpp23`
-- `citron-android-8elite-dynarmic-cpp23`
-
-There is no release job, version-file update, or Discord notification in
-this test workflow. Successful APK compilation does not establish that
-the A32/SMU runtime regression is fixed. The user has confirmed that SMU starts
-successfully with the current baseline; longer gameplay remains separate coverage.
-
-Windows and Linux run independently from Android, with separate concurrency
-keys. Each resolves personal main once, or accepts an optional 40-character
-`source_commit` input to test an exact emulator revision:
-
-- `build-windows.yml`: Windows/MSVC, vcpkg plus source submodules.
-- `build-linux.yml`: Linux/GCC, system packages plus source submodules
-  (versions recorded in the log).
-
-Both build the SDL CLI, shader tool and tests with Qt disabled. They do not prove
-Qt packaging or desktop CPM support. Dispatch each platform independently on CI `main`:
+The user has validated the CPM / C++23 Android builds on-device. The Android
+workflow now publishes `nightly-android` after both APK variants succeed. It runs
+daily at 00:17 UTC (08:17 Asia/Taipei) and can be dispatched manually:
 
 ```sh
-gh workflow run build-windows.yml --repo Splaser/citronneo-CI --ref main
-gh workflow run build-linux.yml --repo Splaser/citronneo-CI --ref main
+gh workflow run build-android.yml --repo Splaser/citronneo-CI --ref main
 ```
 
-For a comparison using the same source revision, add `-f source_commit=<full-SHA>`
-to each desktop command. Android resolves its source revision separately and
-prints it in the log. Starting or cancelling one platform does not affect another.
-All three test workflows only upload build artifacts; they do not publish releases,
-update version files, or send Discord notifications. All three workflows build Splaser/emulator `main` by default.
+The full emulator commit recorded in the release body is the build marker.
+An unchanged, already-published source commit is skipped. A missing release or
+a failed previous build is retried; there is no shared desktop version-file update.
+Use `-f force_build=true` to rebuild and publish the same source revision, or
+`-f build_only=true` to force both APK builds without publishing.
+
+Artifacts are `citron-android-nightly` and `citron-android-8elite`. Both APKs are
+validated before replacing the previous nightly release. No Discord messages
+are sent. Only dispatches from CI `main` can build or publish.
+
+## Paused desktop workflows
+
+The standalone Windows, Linux and macOS workflows and the old all-platform
+Nightly / Stable workflows are disabled in GitHub Actions. Their source
+configurations remain unchanged. Re-enable them explicitly before dispatching;
+the Android nightly workflow does not invoke any desktop jobs.

@@ -1,14 +1,25 @@
-name: Build Citron (Android C++23 / Dynarmic test)
+name: Build Citron (Android Nightly CPM / C++23)
 
 on:
-  workflow_dispatch: {}
+  schedule:
+    - cron: '17 0 * * *'
+  workflow_dispatch:
+    inputs:
+      force_build:
+        description: 'Rebuild and publish even if the source commit is unchanged'
+        type: boolean
+        default: false
+      build_only:
+        description: 'Build both APKs without publishing a release'
+        type: boolean
+        default: false
 
 permissions:
   contents: read
 
 concurrency:
-  group: android-dynarmic-cpp23-${{ github.ref }}
-  cancel-in-progress: true
+  group: android-nightly-${{ github.ref }}
+  cancel-in-progress: false
 
 env:
   EMULATOR_REPOSITORY: https://github.com/Splaser/emulator.git
@@ -17,26 +28,39 @@ env:
 
 jobs:
   check-version:
-    name: Resolve Dynarmic test source
+    name: Resolve Android nightly source
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     outputs:
-      should_build: 'true'
+      should_build: ${{ steps.source.outputs.should_build }}
       new_hash: ${{ steps.source.outputs.hash_short }}
       new_hash_full: ${{ steps.source.outputs.hash_full }}
       branch_name: ${{ steps.source.outputs.branch_name }}
     steps:
-      - name: Resolve emulator test branch
+      - name: Resolve source and compare with published nightly
         id: source
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          FORCE_BUILD: ${{ inputs.force_build || false }}
+          BUILD_ONLY: ${{ inputs.build_only || false }}
         run: |
           FULL_HASH=$(git ls-remote --exit-code "$EMULATOR_REPOSITORY" "refs/heads/$EMULATOR_BRANCH" | cut -f1)
           if ! [[ "$FULL_HASH" =~ ^[0-9a-f]{40}$ ]]; then
-            echo "::error::Could not resolve the emulator test branch"
+            echo "::error::Could not resolve the emulator nightly branch"
             exit 1
           fi
           echo "branch_name=$EMULATOR_BRANCH" >> "$GITHUB_OUTPUT"
           echo "hash_short=${FULL_HASH:0:7}" >> "$GITHUB_OUTPUT"
           echo "hash_full=$FULL_HASH" >> "$GITHUB_OUTPUT"
-          echo "Building $EMULATOR_BRANCH at $FULL_HASH"
+          RELEASE_BODY=$(gh release view nightly-android --repo "$GITHUB_REPOSITORY" --json body --jq .body 2>/dev/null || true)
+          if [ "$FORCE_BUILD" = "true" ] || [ "$BUILD_ONLY" = "true" ] || \
+             ! grep -Fq "<!-- emulator-commit:$FULL_HASH -->" <<< "$RELEASE_BODY"; then
+            echo "should_build=true" >> "$GITHUB_OUTPUT"
+            echo "Building $EMULATOR_BRANCH at $FULL_HASH"
+          else
+            echo "should_build=false" >> "$GITHUB_OUTPUT"
+            echo "This source commit is already published; skipping."
+          fi
 
   build-android:
     name: Build Android APK
@@ -148,13 +172,14 @@ jobs:
           chmod +x gradlew
           ./gradlew assembleMainlineRelease \
             -PcitronAndroidUseCpm=true \
-            -Pcmake.args="-DENABLE_QT=OFF -DENABLE_SDL2=OFF -DENABLE_WEB_SERVICE=OFF -DENABLE_OPENSSL=ON -DCITRON_USE_BUNDLED_VCPKG=OFF -DCITRON_USE_CPM=ON -DCITRON_USE_BUNDLED_FFMPEG=ON -DCITRON_ENABLE_LTO=ON -DCITRON_BUILD_TYPE=Release"
+            -Pcmake.args="-DENABLE_UPDATE_CHECKER=ON -DENABLE_QT=OFF -DENABLE_SDL2=OFF -DENABLE_WEB_SERVICE=OFF -DENABLE_OPENSSL=ON -DCITRON_USE_BUNDLED_VCPKG=OFF -DCITRON_USE_CPM=ON -DCITRON_USE_BUNDLED_FFMPEG=ON -DCITRON_ENABLE_LTO=ON -DCITRON_BUILD_TYPE=Nightly"
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v7
         with:
-          name: citron-android-dynarmic-cpp23
+          name: citron-android-nightly
           path: citron_source/src/android/app/build/outputs/apk/mainline/release/*.apk
+          if-no-files-found: error
 
   build-android-8elite:
     name: Build Android APK (Snapdragon 8 Elite)
@@ -320,7 +345,7 @@ jobs:
           chmod +x ./gradlew
           ./gradlew assembleMainlineRelease \
             -PcitronAndroidUseCpm=true \
-            -Pcmake.args="-DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache -DENABLE_UPDATE_CHECKER=ON -DENABLE_QT=OFF -DENABLE_SDL2=OFF -DENABLE_WEB_SERVICE=OFF -DENABLE_OPENSSL=ON -DCITRON_USE_BUNDLED_VCPKG=OFF -DCITRON_USE_CPM=ON -DCITRON_USE_BUNDLED_FFMPEG=ON -DCITRON_ENABLE_LTO=ON -DCITRON_BUILD_TYPE=Release"
+            -Pcmake.args="-DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache -DENABLE_UPDATE_CHECKER=ON -DENABLE_QT=OFF -DENABLE_SDL2=OFF -DENABLE_WEB_SERVICE=OFF -DENABLE_OPENSSL=ON -DCITRON_USE_BUNDLED_VCPKG=OFF -DCITRON_USE_CPM=ON -DCITRON_USE_BUNDLED_FFMPEG=ON -DCITRON_ENABLE_LTO=ON -DCITRON_BUILD_TYPE=Nightly"
 
           APK_PATH=$(find app/build/outputs/apk -type f -name "*.apk" | head -n 1)
           if [ -z "$APK_PATH" ]; then
@@ -334,5 +359,64 @@ jobs:
       - name: Upload APK artifact
         uses: actions/upload-artifact@v7
         with:
-          name: citron-android-8elite-dynarmic-cpp23
+          name: citron-android-8elite
           path: citron_source/src/android/artifacts/*.apk
+          if-no-files-found: error
+
+
+  release-android:
+    name: Release Android Nightly
+    needs: [check-version, build-android, build-android-8elite]
+    if: github.ref == 'refs/heads/main' && needs.check-version.outputs.should_build == 'true' && inputs.build_only != true
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download APK artifacts
+        uses: actions/download-artifact@v8
+        with:
+          pattern: citron-android-*
+          merge-multiple: true
+          path: artifacts
+
+      - name: Validate both APK variants
+        shell: bash
+        run: |
+          test -s artifacts/app-mainline-release.apk
+          mapfile -t ELITE_APKS < <(find artifacts -maxdepth 1 -type f -name 'Citron-*-Android-8.Elite-Lyb.apk')
+          test "${#ELITE_APKS[@]}" -eq 1
+          test -s "${ELITE_APKS[0]}"
+          test "$(find artifacts -maxdepth 1 -type f -name '*.apk' | wc -l)" -eq 2
+          unzip -t artifacts/app-mainline-release.apk
+          unzip -t "${ELITE_APKS[0]}"
+
+      - name: Remove previous nightly release after both APKs are validated
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if gh release view nightly-android --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release delete nightly-android --repo "$GITHUB_REPOSITORY" --cleanup-tag --yes
+          fi
+
+      - name: Publish Android nightly
+        uses: softprops/action-gh-release@v3
+        with:
+          name: "Continuous Build: (Android Nightly: ${{ needs.check-version.outputs.new_hash }})"
+          tag_name: nightly-android
+          target_commitish: ${{ github.sha }}
+          prerelease: false
+          make_latest: false
+          fail_on_unmatched_files: true
+          files: artifacts/*.apk
+          body: |
+            **Emulator commit:** [${{ needs.check-version.outputs.new_hash }}](https://github.com/Splaser/emulator/commit/${{ needs.check-version.outputs.new_hash_full }})
+
+            Built from **Splaser/emulator main** using CPM, C++23 and Android NDK r29.
+            Source submodules remain uninitialized.
+
+            - Platform: Android (arm64-v8a)
+            - Build type: Nightly with LTO and the update checker enabled
+            - Variants: Standard and Snapdragon 8 Elite with Qualcomm patches
+            - [Workflow run](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})
+
+            <!-- emulator-commit:${{ needs.check-version.outputs.new_hash_full }} -->

@@ -1,3 +1,16 @@
+## Splaser fork build status
+
+Android nightly builds use `Splaser/emulator/main`, CPM, C++23 and NDK r29.
+Standard and Snapdragon 8 Elite APKs are published to
+[nightly-android](https://github.com/Splaser/citronneo-CI/releases/tag/nightly-android)
+after both builds pass. The workflow checks daily at **08:17 Asia/Taipei**;
+manual builds and build-only tests are available in
+[Android Nightly](https://github.com/Splaser/citronneo-CI/actions/workflows/build-android.yml).
+Other platforms and the old all-platform workflows are paused.
+See [workflow details](docs/dynarmic-cpp23-android-test.md).
+
+---
+
 # 🍋 The Official Citron Neo CI
 
 [![GitHub Downloads](https://camo.githubusercontent.com/f7d99771b8c7be2c26f2ae567342d0f6224a81daf7362bad19031525d68ecbd8/68747470733a2f2f696d672e736869656c64732e696f2f6769746875622f646f776e6c6f6164732f636974726f6e2d6e656f2f43492f746f74616c3f6c6f676f3d676974687562266c6162656c3d476974487562253230446f776e6c6f616473)](https://github.com/citron-neo/CI/releases/latest) [![Build Citron Neo (Nightly)](https://github.com/citron-neo/CI/actions/workflows/build_nightly.yml/badge.svg)](https://github.com/citron-neo/CI/actions/workflows/build_nightly.yml) [![Build Citron Neo (Stable)](https://github.com/citron-neo/CI/actions/workflows/build_stable.yml/badge.svg)](https://github.com/citron-neo/CI/actions/workflows/build_stable.yml)
