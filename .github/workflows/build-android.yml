@@ -433,7 +433,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: Splaser/emulator
-          ref: c6854ee80a43710605a889dc559bc2ca6dbb7d21
+          ref: e2590fa97316ff44860d57871dda47b85f2e82a6
           submodules: false
       - uses: ilammy/msvc-dev-cmd@v1
         with:
@@ -472,3 +472,37 @@ jobs:
           & 'C:\Program Files\LLVM\bin\clang-cl.exe' /std:c++latest /EHsc /Isrc "/I$env:OPENSSL_INCLUDE" /c smoke.cpp /Fo:smoke.obj
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
+
+  dynarmic-hash-regression:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: Splaser/dynarmic
+          ref: 8c54a77b52928866d16462a6f6b9a6adfe6f1755
+          fetch-depth: 0
+          submodules: false
+      - name: Prepare C++23 and pinned Boost headers
+        run: |
+          set -euo pipefail
+          if ! command -v g++-14 >/dev/null; then
+            sudo apt-get update
+            sudo apt-get install -y g++-14
+          fi
+          curl -fL --retry 3 https://archives.boost.io/release/1.87.0/source/boost_1_87_0.tar.bz2 -o boost.tar.bz2
+          tar -xjf boost.tar.bz2 boost_1_87_0/boost
+      - name: Reproduce the previous hasher failure and verify the fix
+        run: |
+          set -euo pipefail
+          mkdir -p previous/dynarmic/common/container
+          for file in unordered_map.h unordered_set.h; do
+            git show "31bdd01b:src/dynarmic/common/container/$file" > "previous/dynarmic/common/container/$file"
+          done
+          if g++-14 -std=c++23 -Iprevious -Isrc -Iboost_1_87_0 tests/container_hash_smoke.cpp -o previous-smoke > previous.log 2>&1; then
+            echo "::error::The previous hasher unexpectedly accepted descriptor keys"
+            exit 1
+          fi
+          grep -q 'hash_value' previous.log
+          grep -q 'LocationDescriptor' previous.log
+          g++-14 -std=c++23 -Isrc -Iboost_1_87_0 tests/container_hash_smoke.cpp -o hash-smoke
+          ./hash-smoke
