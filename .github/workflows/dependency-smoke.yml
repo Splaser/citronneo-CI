@@ -1,0 +1,51 @@
+name: Dependency integration clang-cl smoke
+on:
+  workflow_dispatch: {}
+permissions:
+  contents: read
+jobs:
+  clang-cl-integration:
+    runs-on: windows-2025
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: Splaser/emulator
+          ref: 779bf58e74cae6fe56147df77d81e9bc7b53cd5b
+          submodules: false
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+      - name: Locate OpenSSL headers
+        shell: pwsh
+        run: |
+          $roots = @('C:\Program Files\OpenSSL', 'C:\Program Files\OpenSSL-Win64', 'C:\OpenSSL-Win64')
+          $include = $roots | ForEach-Object { Join-Path $_ 'include' } | Where-Object { Test-Path (Join-Path $_ 'openssl/evp.h') } | Select-Object -First 1
+          if (-not $include) {
+            choco install openssl --yes --no-progress
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            $include = $roots | ForEach-Object { Join-Path $_ 'include' } | Where-Object { Test-Path (Join-Path $_ 'openssl/evp.h') } | Select-Object -First 1
+          }
+          if (-not $include) { throw 'OpenSSL headers were not found' }
+          "OPENSSL_INCLUDE=$include" >> $env:GITHUB_ENV
+      - name: Check AES-NI and tuple/pair hashing under clang-cl
+        shell: pwsh
+        run: |
+          @'
+          #include "core/crypto/aes_ni.h"
+          #include "common/container_hash.h"
+          #include <cassert>
+          #include <unordered_map>
+          static_assert(CITRON_HAS_AES_NI == 1);
+          int main() {
+              Common::TupleHash hash;
+              std::unordered_map<std::tuple<bool, size_t, int, int>, int, Common::TupleHash> map;
+              auto key = std::tuple{true, size_t{4}, -1, 2};
+              map.emplace(key, 42);
+              assert(map.at(key) == 42);
+              assert(hash(std::pair{-1, 2}) == hash(std::tuple{-1, 2}));
+              assert(hash(std::tuple{}) == 0);
+          }
+          '@ | Set-Content smoke.cpp
+          & 'C:\Program Files\LLVM\bin\clang-cl.exe' /std:c++latest /EHsc /Isrc "/I$env:OPENSSL_INCLUDE" /c smoke.cpp /Fo:smoke.obj
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
