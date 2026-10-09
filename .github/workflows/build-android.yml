@@ -433,7 +433,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: Splaser/emulator
-          ref: 779bf58e74cae6fe56147df77d81e9bc7b53cd5b
+          ref: c6854ee80a43710605a889dc559bc2ca6dbb7d21
           submodules: false
       - uses: ilammy/msvc-dev-cmd@v1
         with:
