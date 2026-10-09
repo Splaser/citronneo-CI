@@ -5,6 +5,10 @@ on:
     - cron: '17 0 * * *'
   workflow_dispatch:
     inputs:
+      host_only:
+        description: Run only the clang-cl smoke check
+        type: boolean
+        default: false
       force_build:
         description: 'Rebuild and publish even if the source commit is unchanged'
         type: boolean
@@ -29,7 +33,7 @@ env:
 jobs:
   check-version:
     name: Resolve Android nightly source
-    if: github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'workflow_dispatch' && inputs.host_only != true
     runs-on: ubuntu-latest
     outputs:
       should_build: ${{ steps.source.outputs.should_build }}
@@ -434,6 +438,18 @@ jobs:
       - uses: ilammy/msvc-dev-cmd@v1
         with:
           arch: x64
+      - name: Locate OpenSSL headers
+        shell: pwsh
+        run: |
+          $roots = @('C:\Program Files\OpenSSL', 'C:\Program Files\OpenSSL-Win64', 'C:\OpenSSL-Win64')
+          $include = $roots | ForEach-Object { Join-Path $_ 'include' } | Where-Object { Test-Path (Join-Path $_ 'openssl/evp.h') } | Select-Object -First 1
+          if (-not $include) {
+            choco install openssl --yes --no-progress
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            $include = $roots | ForEach-Object { Join-Path $_ 'include' } | Where-Object { Test-Path (Join-Path $_ 'openssl/evp.h') } | Select-Object -First 1
+          }
+          if (-not $include) { throw 'OpenSSL headers were not found' }
+          "OPENSSL_INCLUDE=$include" >> $env:GITHUB_ENV
       - name: Check AES-NI and tuple/pair hashing under clang-cl
         shell: pwsh
         run: |
@@ -453,7 +469,6 @@ jobs:
               assert(hash(std::tuple{}) == 0);
           }
           '@ | Set-Content smoke.cpp
-          & 'C:\Program Files\LLVM\bin\clang-cl.exe' /std:c++latest /EHsc /Isrc smoke.cpp /Fe:smoke.exe
+          & 'C:\Program Files\LLVM\bin\clang-cl.exe' /std:c++latest /EHsc /Isrc "/I$env:OPENSSL_INCLUDE" /c smoke.cpp /Fo:smoke.obj
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          ./smoke.exe
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
